@@ -80,13 +80,36 @@ def get_game_tags(app_id):
         logger.error("Failed to retrieve tags.")
         return None
 
+def test_url(url):
+    try:
+        response = requests.get(url, timeout=5)
+        return response.status_code == 200
+    except requests.RequestException:
+        return False
 
-def map_game(game_data, app_id):        
+def fix_bg_url(game_data):
+    bg_option1 = game_data["background_raw"]
+    bg_option2 = game_data["background"]
+    bg_option3 = game_data["screenshots"][0]["path_full"]
+
+    if test_url(bg_option1):
+        return bg_option1
+    elif test_url(bg_option2):
+        return bg_option2
+    elif test_url(bg_option3):
+        return bg_option3
+    else:
+        return None
+
+
+
+def map_game(game_data, app_id): 
+    new_background_image = fix_bg_url(game_data)       
     return {
         "id": game_data["steam_appid"],
         "name": clean_string(game_data["name"]),
         "slug": clean_string(game_data["name"]).lower().replace(" ", "-"),
-        "background_image": game_data.get("background_raw") or (game_data.get("screenshots", []) and game_data["screenshots"][0].get("path_full")) or game_data.get("header_image") or None,
+        "background_image": new_background_image,
         "box_image": f"https://steamcdn-a.akamaihd.net/steam/apps/{app_id}/library_600x900_2x.jpg",
         "description_raw": clean_string(game_data.get("detailed_description", "")),
         "metacritic": game_data.get("metacritic", {}).get("score", None),

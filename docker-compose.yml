@@ -1,0 +1,13 @@
+services:
+  rawg-to-steam-redirect:
+    build: .
+    ports:
+      - "80:9999"
+    volumes:
+      - ./database.sqlite:/usr/src/app/database.sqlite # Mount an empty database.sqlite file (left of the colon)
+    restart: always
+    develop:
+      watch:
+        - action: rebuild
+          path: .
+          target: /usr/src/app

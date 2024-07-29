@@ -70,15 +70,22 @@ def get_game_tags(app_id):
         return cached_data
 
     data = retry_request(url)
-    if data and "tags" in data:
-        tags = data.get("tags", [])
-        game_tags = [{"id": tag_id, "name": tag_name, "language": "eng"} for tag_name, tag_id in tags.items()]
-        app.logger.debug(data)
-        cache_data(url, json.dumps(game_tags))
-        return game_tags
-    else:
-        logger.error("Failed to retrieve tags.")
-        return None
+    if data:
+        app.logger.debug(f"Received data for app_id {app_id}: {data}")
+        if "tags" in data:
+            tags = data["tags"]
+            if isinstance(tags, dict):
+                game_tags = [{"id": tag_id, "name": tag_name, "language": "eng"} for tag_name, tag_id in tags.items()]
+            elif isinstance(tags, list):
+                game_tags = [{"id": i, "name": tag, "language": "eng"} for i, tag in enumerate(tags)]
+            else:
+                logger.error(f"Unexpected tags format for app_id {app_id}: {tags}")
+                game_tags = []  # or handle this case as needed
+            cache_data(url, json.dumps(game_tags))
+            return game_tags
+    logger.error("Failed to retrieve tags.")
+    return None
+#Logic to fix background image
 
 def test_url(url):
     try:
@@ -87,6 +94,7 @@ def test_url(url):
     except requests.RequestException:
         return False
 
+#This tests the url for a valid image since we cant rely on steam to always have the RAW image
 def fix_bg_url(game_data):
     bg_option1 = game_data["background_raw"]
     bg_option2 = game_data["background"]
@@ -100,11 +108,15 @@ def fix_bg_url(game_data):
         return bg_option3
     else:
         return None
-
+#end logic to fix background image
 
 
 def map_game(game_data, app_id): 
-    new_background_image = fix_bg_url(game_data)       
+    new_background_image = fix_bg_url(game_data)
+    if game_data.get("release_date", {}).get("coming_soon", None) == True:
+        release_date = None
+    else:
+        release_date = parser.parse(game_data.get("release_date", {}).get("date", None)).strftime('%Y-%m-%dT%H:%M:%SZ') if game_data.get("release_date", {}).get("date", None) else None     
     return {
         "id": game_data["steam_appid"],
         "name": clean_string(game_data["name"]),
@@ -116,7 +128,7 @@ def map_game(game_data, app_id):
         "website": game_data.get("website", None),
         "genres": [{"id": int(genre.get("id", None)), "name": genre.get("description", None)} for genre in game_data.get("genres", [])],
         "tags": [{"id": int(tag.get("id", None)), "name": tag.get("description", None), "language": "eng"} for tag in game_data.get("categories", [])],
-        "released": parser.parse(game_data.get("release_date", {}).get("date", None)).strftime('%Y-%m-%dT%H:%M:%SZ') if game_data.get("release_date", {}).get("date", None) else None,
+        "released": release_date,
         "developers": [{"id": abs(hash(dev)) % (10 ** 9), "name": dev} for dev in game_data.get("developers", [])],
         "publishers": [{"id": abs(hash(pub)) % (10 ** 9), "name": pub} for pub in game_data.get("publishers", [])],
     }
@@ -182,6 +194,32 @@ def get_steam_game(app_id):
         mapped_game.setdefault("tags", []).extend(tags)
     increment_stat('games')
     return jsonify(mapped_game)
+
+@app.route("/api/games/<int:app_id>/screenshots", methods=["GET"])
+def get_steam_game_screenshots(app_id):
+    steam_game = get_steam_app_details(app_id, request.args.get("lang", default_language))
+    if not steam_game:
+        return jsonify({"error": "Game not found"}), 404
+    game_data = steam_game.get(str(app_id), {}).get("data", {})
+    screenshots = game_data.get("screenshots", [])
+    
+    screenshots_formatted = {
+        "count": len(screenshots),
+        "next": None,
+        "previous": None,
+        "results": [
+            {
+                "id": screenshot["id"],
+                "image": screenshot["path_full"],
+                #"width": 1280, #Steam doesnt know this so we skip it for now
+                #"height": 720,
+                "is_deleted": False
+            }
+            for screenshot in screenshots
+        ]
+    }
+    
+    return jsonify(screenshots_formatted)
 
 @app.route("/api/stats")
 def stats():

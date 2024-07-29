@@ -36,6 +36,10 @@ This endpoint retrieves detailed information about a specific game.
   - required: `false`
   - default: `english`
 
+### `/api/games/:id/screenshots`
+
+This endpoint shows screenshots from the selected app ID.
+
 ### `/api/stats`
 
 This endpoint returns the number of times each endpoint has been called.

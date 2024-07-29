@@ -70,15 +70,21 @@ def get_game_tags(app_id):
         return cached_data
 
     data = retry_request(url)
-    if data and "tags" in data:
-        tags = data.get("tags", [])
-        game_tags = [{"id": tag_id, "name": tag_name, "language": "eng"} for tag_name, tag_id in tags.items()]
-        app.logger.debug(data)
-        cache_data(url, json.dumps(game_tags))
-        return game_tags
-    else:
-        logger.error("Failed to retrieve tags.")
-        return None
+    if data:
+        app.logger.debug(f"Received data for app_id {app_id}: {data}")
+        if "tags" in data:
+            tags = data["tags"]
+            if isinstance(tags, dict):
+                game_tags = [{"id": tag_id, "name": tag_name, "language": "eng"} for tag_name, tag_id in tags.items()]
+            elif isinstance(tags, list):
+                game_tags = [{"id": i, "name": tag, "language": "eng"} for i, tag in enumerate(tags)]
+            else:
+                logger.error(f"Unexpected tags format for app_id {app_id}: {tags}")
+                game_tags = []  # or handle this case as needed
+            cache_data(url, json.dumps(game_tags))
+            return game_tags
+    logger.error("Failed to retrieve tags.")
+    return None
 #Logic to fix background image
 
 def test_url(url):
@@ -106,7 +112,11 @@ def fix_bg_url(game_data):
 
 
 def map_game(game_data, app_id): 
-    new_background_image = fix_bg_url(game_data)       
+    new_background_image = fix_bg_url(game_data)
+    if game_data.get("release_date", {}).get("coming_soon", None) == True:
+        release_date = None
+    else:
+        release_date = parser.parse(game_data.get("release_date", {}).get("date", None)).strftime('%Y-%m-%dT%H:%M:%SZ') if game_data.get("release_date", {}).get("date", None) else None     
     return {
         "id": game_data["steam_appid"],
         "name": clean_string(game_data["name"]),
@@ -118,7 +128,7 @@ def map_game(game_data, app_id):
         "website": game_data.get("website", None),
         "genres": [{"id": int(genre.get("id", None)), "name": genre.get("description", None)} for genre in game_data.get("genres", [])],
         "tags": [{"id": int(tag.get("id", None)), "name": tag.get("description", None), "language": "eng"} for tag in game_data.get("categories", [])],
-        "released": parser.parse(game_data.get("release_date", {}).get("date", None)).strftime('%Y-%m-%dT%H:%M:%SZ') if game_data.get("release_date", {}).get("date", None) else None,
+        "released": release_date,
         "developers": [{"id": abs(hash(dev)) % (10 ** 9), "name": dev} for dev in game_data.get("developers", [])],
         "publishers": [{"id": abs(hash(pub)) % (10 ** 9), "name": pub} for pub in game_data.get("publishers", [])],
     }
